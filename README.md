@@ -85,3 +85,14 @@ The scheduler includes the following features:
 - **Offline Support**: The scheduler implements offline support, allowing users to continue working even when they are not connected to the internet. Once the connection is restored, the scheduler synchronizes the offline data with the backend API.
 - **Conflict Resolution**: The scheduler enforces data consistency rules to prevent conflicts and ensure that all platforms have the same data.
 - **User-Friendly Interface**: The scheduler provides a user-friendly interface for managing schedules and task assignments.
+
+## Supabase Integration
+
+The application uses Supabase as the backend service, which includes the following features:
+
+- **Database**: The application uses Supabase's PostgreSQL database for data storage and management.
+- **Authentication**: Supabase's authentication service is used for user registration, login, and session management.
+- **Storage**: Supabase's storage service is used for handling file uploads, such as receipt scanning and task attachments.
+- **Real-Time Updates**: Supabase's real-time capabilities are utilized for real-time updates, replacing the current WebSockets setup.
+
+The backend API in `backend/api.py` is updated to use Supabase's PostgreSQL database, authentication, and storage services. The frontend interfaces in `frontend/ios_interface.swift`, `frontend/macos_interface.swift`, and `frontend/visionos_interface.swift` now interact with Supabase for database operations, authentication, and real-time updates.

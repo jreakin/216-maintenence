@@ -1,4 +1,5 @@
 import SwiftUI
+import Supabase
 
 struct Task: Identifiable {
     var id: Int
@@ -25,28 +26,94 @@ class TaskViewModel: ObservableObject {
     @Published var users: [User] = []
     @Published var currentUser: User?
 
+    private let supabaseClient = SupabaseClient(supabaseURL: "your_supabase_url", supabaseKey: "your_supabase_key")
+
     func fetchTasks() {
-        // Fetch tasks from backend API
+        supabaseClient.database.from("tasks").select().execute { result in
+            switch result {
+            case .success(let response):
+                if let data = response.data as? [[String: Any]] {
+                    self.tasks = data.compactMap { dict in
+                        guard let id = dict["id"] as? Int,
+                              let description = dict["description"] as? String,
+                              let location = dict["location"] as? String,
+                              let estimatedCost = dict["estimated_cost"] as? Double,
+                              let status = dict["status"] as? String,
+                              let priority = dict["priority"] as? String else { return nil }
+                        let finalCost = dict["final_cost"] as? Double
+                        let deadline = dict["deadline"] as? Date
+                        let dependencies = dict["dependencies"] as? [Int]
+                        let comments = dict["comments"] as? [String]
+                        let attachments = dict["attachments"] as? [String]
+                        return Task(id: id, description: description, location: location, estimatedCost: estimatedCost, finalCost: finalCost, status: status, priority: priority, deadline: deadline, dependencies: dependencies, comments: comments, attachments: attachments)
+                    }
+                }
+            case .failure(let error):
+                print("Error fetching tasks: \(error.localizedDescription)")
+            }
+        }
     }
 
     func fetchUsers() {
-        // Fetch users from backend API
+        supabaseClient.database.from("users").select().execute { result in
+            switch result {
+            case .success(let response):
+                if let data = response.data as? [[String: Any]] {
+                    self.users = data.compactMap { dict in
+                        guard let id = dict["id"] as? Int,
+                              let username = dict["username"] as? String,
+                              let role = dict["role"] as? String else { return nil }
+                        return User(id: id, username: username, role: role)
+                    }
+                }
+            case .failure(let error):
+                print("Error fetching users: \(error.localizedDescription)")
+            }
+        }
     }
 
     func updateTaskStatus(taskId: Int, status: String) {
-        // Update task status in backend API
+        supabaseClient.database.from("tasks").update(values: ["status": status]).eq(column: "id", value: taskId).execute { result in
+            switch result {
+            case .success:
+                self.fetchTasks()
+            case .failure(let error):
+                print("Error updating task status: \(error.localizedDescription)")
+            }
+        }
     }
 
     func updateTaskPriority(taskId: Int, priority: String) {
-        // Update task priority in backend API
+        supabaseClient.database.from("tasks").update(values: ["priority": priority]).eq(column: "id", value: taskId).execute { result in
+            switch result {
+            case .success:
+                self.fetchTasks()
+            case .failure(let error):
+                print("Error updating task priority: \(error.localizedDescription)")
+            }
+        }
     }
 
     func addCommentToTask(taskId: Int, comment: String) {
-        // Add comment to task in backend API
+        supabaseClient.database.from("tasks").update(values: ["comments": comment]).eq(column: "id", value: taskId).execute { result in
+            switch result {
+            case .success:
+                self.fetchTasks()
+            case .failure(let error):
+                print("Error adding comment to task: \(error.localizedDescription)")
+            }
+        }
     }
 
     func addAttachmentToTask(taskId: Int, attachment: String) {
-        // Add attachment to task in backend API
+        supabaseClient.database.from("tasks").update(values: ["attachments": attachment]).eq(column: "id", value: taskId).execute { result in
+            switch result {
+            case .success:
+                self.fetchTasks()
+            case .failure(let error):
+                print("Error adding attachment to task: \(error.localizedDescription)")
+            }
+        }
     }
 
     func validateAddress(address: String, completion: @escaping (String?) -> Void) {
@@ -55,6 +122,39 @@ class TaskViewModel: ObservableObject {
 
     func scanReceipt(file: Data, completion: @escaping (String?) -> Void) {
         // Scan receipt using backend API
+    }
+
+    func registerUser(username: String, password: String, role: String, completion: @escaping (Bool) -> Void) {
+        supabaseClient.auth.signUp(email: username, password: password) { result in
+            switch result {
+            case .success:
+                self.supabaseClient.database.from("users").insert(values: ["username": username, "role": role]).execute { result in
+                    switch result {
+                    case .success:
+                        completion(true)
+                    case .failure(let error):
+                        print("Error registering user: \(error.localizedDescription)")
+                        completion(false)
+                    }
+                }
+            case .failure(let error):
+                print("Error signing up user: \(error.localizedDescription)")
+                completion(false)
+            }
+        }
+    }
+
+    func loginUser(username: String, password: String, completion: @escaping (Bool) -> Void) {
+        supabaseClient.auth.signIn(email: username, password: password) { result in
+            switch result {
+            case .success:
+                self.currentUser = User(id: 0, username: username, role: "") // Update with actual user data
+                completion(true)
+            case .failure(let error):
+                print("Error logging in user: \(error.localizedDescription)")
+                completion(false)
+            }
+        }
     }
 }
 

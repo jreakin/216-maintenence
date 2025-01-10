@@ -10,12 +10,14 @@ import boto3
 from azure.cognitiveservices.vision.computervision import ComputerVisionClient
 from msrest.authentication import CognitiveServicesCredentials
 import datetime
+import supabase
 
 app = FastAPI()
 
-# Database setup
-DATABASE_URL = "sqlite:///./app.db"
-engine = create_engine(DATABASE_URL)
+# Supabase setup
+supabase_url = "your_supabase_url"
+supabase_key = "your_supabase_key"
+supabase_client = supabase.create_client(supabase_url, supabase_key)
 
 # Initialize Google Maps API
 gmaps = GoogleMaps('your_google_maps_api_key')
@@ -108,39 +110,47 @@ def role_required(role: str):
 # User registration endpoint
 @app.post('/register', response_model=UserCreate)
 def register(user: UserCreate):
+    response = supabase_client.auth.sign_up({
+        'email': user.username,
+        'password': user.password
+    })
+    if response.get('error'):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=response['error']['message'])
+    new_user = User(username=user.username, password=user.password, role=user.role)
     with Session(engine) as session:
-        new_user = User(username=user.username, password=user.password, role=user.role)
         session.add(new_user)
         session.commit()
         session.refresh(new_user)
-        return new_user
+    return new_user
 
 # User login endpoint
 @app.post('/login')
 def login(form_data: OAuth2PasswordRequestForm = Depends(), Authorize: AuthJWT = Depends()):
-    with Session(engine) as session:
-        user = session.exec(select(User).where(User.username == form_data.username)).first()
-        if not user or user.password != form_data.password:
-            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
-        access_token = Authorize.create_access_token(subject=user.username)
-        return {"access_token": access_token}
+    response = supabase_client.auth.sign_in({
+        'email': form_data.username,
+        'password': form_data.password
+    })
+    if response.get('error'):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=response['error']['message'])
+    access_token = Authorize.create_access_token(subject=form_data.username)
+    return {"access_token": access_token}
 
 # Task creation endpoint
 @app.post('/tasks', dependencies=[Depends(role_required('Office Admin'))])
 def create_task(task: TaskCreate):
+    new_task = Task(
+        description=task.description,
+        location=task.location,
+        estimated_cost=task.estimated_cost,
+        status='Not Started',
+        priority=task.priority,
+        deadline=task.deadline
+    )
     with Session(engine) as session:
-        new_task = Task(
-            description=task.description,
-            location=task.location,
-            estimated_cost=task.estimated_cost,
-            status='Not Started',
-            priority=task.priority,
-            deadline=task.deadline
-        )
         session.add(new_task)
         session.commit()
         session.refresh(new_task)
-        return new_task
+    return new_task
 
 # Task update endpoint
 @app.put('/tasks/{task_id}', dependencies=[Depends(role_required('Office Admin'))])
@@ -161,7 +171,7 @@ def update_task(task_id: int, task: TaskUpdate):
         existing_task.attachments = task.attachments
         session.commit()
         session.refresh(existing_task)
-        return existing_task
+    return existing_task
 
 # Task prioritization endpoint
 @app.put('/tasks/{task_id}/priority', dependencies=[Depends(role_required('Dispatcher'))])
@@ -173,7 +183,7 @@ def prioritize_task(task_id: int, priority_update: TaskPriorityUpdate):
         task.priority = priority_update.priority
         session.commit()
         session.refresh(task)
-        return task
+    return task
 
 # Address validation endpoint
 @app.post('/validate_address', dependencies=[Depends(AuthJWT)])
