@@ -96,3 +96,15 @@ The application uses Supabase as the backend service, which includes the followi
 - **Real-Time Updates**: Supabase's real-time capabilities are utilized for real-time updates, replacing the current WebSockets setup.
 
 The backend API in `backend/api.py` is updated to use Supabase's PostgreSQL database, authentication, and storage services. The frontend interfaces in `frontend/ios_interface.swift`, `frontend/macos_interface.swift`, and `frontend/visionos_interface.swift` now interact with Supabase for database operations, authentication, and real-time updates.
+
+## Google Maps API Integration
+
+The application uses the Google Maps API to track drive time to/from each location automatically. This ensures that the drive time does not need to be manually entered by the employee. The initialization of the Google Maps API can be found in the `backend/api.py` file.
+
+## Apple Push Notification Service (APNs) Integration
+
+The application integrates Apple Push Notification Service (APNs) to handle push notifications. This ensures that employees receive notifications on their devices for task updates. The configuration of APNs can be found in the `backend/api.py` file. The frontend interfaces in `frontend/ios_interface.swift`, `frontend/macos_interface.swift`, and `frontend/visionos_interface.swift` are set up to receive and handle these notifications.
+
+## ARKit Integration for Room Scanning
+
+The application integrates ARKit to enable room scanning. This allows employees to capture "before" and "after" layouts of the building or room they are working on. The captured room layout data is stored as attachments in the task model in the backend API in `backend/api.py`. The frontend interfaces in `frontend/ios_interface.swift`, `frontend/macos_interface.swift`, and `frontend/visionos_interface.swift` include views that use ARKit to capture the room layout.

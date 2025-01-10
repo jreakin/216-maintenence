@@ -1,5 +1,11 @@
 import SwiftUI
 import Supabase
+import UserNotifications
+import ARKit
+import CoreML
+import Vision
+import CoreLocation
+import MapKit
 
 struct Task: Identifiable {
     var id: Int
@@ -13,6 +19,8 @@ struct Task: Identifiable {
     var dependencies: [Int]?
     var comments: [String]?
     var attachments: [String]?
+    var beforeScan: String?
+    var afterScan: String?
 }
 
 struct User: Identifiable {
@@ -25,8 +33,16 @@ class TaskViewModel: ObservableObject {
     @Published var tasks: [Task] = []
     @Published var users: [User] = []
     @Published var currentUser: User?
+    @Published var currentLocation: CLLocation?
 
     private let supabaseClient = SupabaseClient(supabaseURL: "your_supabase_url", supabaseKey: "your_supabase_key")
+    private let locationManager = CLLocationManager()
+
+    init() {
+        locationManager.delegate = self
+        locationManager.requestWhenInUseAuthorization()
+        locationManager.startUpdatingLocation()
+    }
 
     func fetchTasks() {
         supabaseClient.database.from("tasks").select().execute { result in
@@ -45,7 +61,9 @@ class TaskViewModel: ObservableObject {
                         let dependencies = dict["dependencies"] as? [Int]
                         let comments = dict["comments"] as? [String]
                         let attachments = dict["attachments"] as? [String]
-                        return Task(id: id, description: description, location: location, estimatedCost: estimatedCost, finalCost: finalCost, status: status, priority: priority, deadline: deadline, dependencies: dependencies, comments: comments, attachments: attachments)
+                        let beforeScan = dict["before_scan"] as? String
+                        let afterScan = dict["after_scan"] as? String
+                        return Task(id: id, description: description, location: location, estimatedCost: estimatedCost, finalCost: finalCost, status: status, priority: priority, deadline: deadline, dependencies: dependencies, comments: comments, attachments: attachments, beforeScan: beforeScan, afterScan: afterScan)
                     }
                 }
             case .failure(let error):
@@ -156,6 +174,113 @@ class TaskViewModel: ObservableObject {
             }
         }
     }
+
+    // Role-based access control
+    func hasPermission(for role: String) -> Bool {
+        guard let currentUser = currentUser else { return false }
+        let roleHierarchy = ["Super Admin": 4, "Office Admin": 3, "Dispatcher": 2, "Employee": 1]
+        return roleHierarchy[currentUser.role] ?? 0 >= roleHierarchy[role] ?? 0
+    }
+
+    // Push notifications
+    func sendPushNotification(title: String, body: String) {
+        let content = UNMutableNotificationContent()
+        content.title = title
+        content.body = body
+        content.sound = UNNotificationSound.default
+
+        let request = UNNotificationRequest(identifier: UUID().uuidString, content: content, trigger: nil)
+        UNUserNotificationCenter.current().add(request, withCompletionHandler: nil)
+    }
+
+    // Live display notifications
+    func displayLiveNotification(task: Task) {
+        let content = UNMutableNotificationContent()
+        content.title = "Task Update"
+        content.body = "Task: \(task.description) - Status: \(task.status)"
+        content.sound = UNNotificationSound.default
+
+        let request = UNNotificationRequest(identifier: UUID().uuidString, content: content, trigger: nil)
+        UNUserNotificationCenter.current().add(request, withCompletionHandler: nil)
+    }
+
+    // ARKit room scanning
+    func captureRoomLayout() -> String {
+        // Implement ARKit room scanning and return the captured layout data as a string
+        return "room_layout_data"
+    }
+
+    // Core ML receipt text recognition
+    func recognizeTextInReceipt(image: UIImage, completion: @escaping (String?) -> Void) {
+        guard let model = try? VNCoreMLModel(for: MyReceiptTextRecognitionModel().model) else {
+            completion(nil)
+            return
+        }
+
+        let request = VNCoreMLRequest(model: model) { request, error in
+            guard let results = request.results as? [VNRecognizedTextObservation] else {
+                completion(nil)
+                return
+            }
+
+            let recognizedText = results.compactMap { $0.topCandidates(1).first?.string }.joined(separator: "\n")
+            completion(recognizedText)
+        }
+
+        guard let cgImage = image.cgImage else {
+            completion(nil)
+            return
+        }
+
+        let handler = VNImageRequestHandler(cgImage: cgImage, options: [:])
+        try? handler.perform([request])
+    }
+
+    // Core Location framework
+    func getCurrentLocation() {
+        locationManager.requestLocation()
+    }
+
+    // Calculate distance between current location and task location
+    func calculateDistance(to taskLocation: CLLocation) -> CLLocationDistance? {
+        guard let currentLocation = currentLocation else { return nil }
+        return currentLocation.distance(from: taskLocation)
+    }
+
+    // MapKit framework
+    func displayMap(for taskLocation: CLLocationCoordinate2D) {
+        let mapItem = MKMapItem(placemark: MKPlacemark(coordinate: taskLocation))
+        mapItem.name = "Task Location"
+        mapItem.openInMaps(launchOptions: [MKLaunchOptionsDirectionsModeKey: MKLaunchOptionsDirectionsModeDriving])
+    }
+
+    // Calculate travel time and distance between locations
+    func calculateTravelTime(from origin: CLLocationCoordinate2D, to destination: CLLocationCoordinate2D, completion: @escaping (TimeInterval?, CLLocationDistance?) -> Void) {
+        let request = MKDirections.Request()
+        request.source = MKMapItem(placemark: MKPlacemark(coordinate: origin))
+        request.destination = MKMapItem(placemark: MKPlacemark(coordinate: destination))
+        request.transportType = .automobile
+
+        let directions = MKDirections(request: request)
+        directions.calculate { response, error in
+            guard let route = response?.routes.first else {
+                completion(nil, nil)
+                return
+            }
+
+            completion(route.expectedTravelTime, route.distance)
+        }
+    }
+}
+
+extension TaskViewModel: CLLocationManagerDelegate {
+    func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
+        currentLocation = locations.last
+    }
+
+    func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) {
+        print("Error updating location: \(error.localizedDescription)")
+    }
 }
 
 struct ContentView: View {
@@ -207,6 +332,14 @@ struct TaskRow: View {
             }
             if let attachments = task.attachments {
                 Text("Attachments: \(attachments.joined(separator: ", "))")
+                    .font(.subheadline)
+            }
+            if let beforeScan = task.beforeScan {
+                Text("Before Scan: \(beforeScan)")
+                    .font(.subheadline)
+            }
+            if let afterScan = task.afterScan {
+                Text("After Scan: \(afterScan)")
                     .font(.subheadline)
             }
         }

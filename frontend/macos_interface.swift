@@ -1,5 +1,7 @@
 import SwiftUI
 import Supabase
+import UserNotifications
+import ARKit
 
 struct Task: Identifiable {
     var id: Int
@@ -13,6 +15,8 @@ struct Task: Identifiable {
     var dependencies: [Int]?
     var comments: [String]?
     var attachments: [String]?
+    var beforeScan: String?
+    var afterScan: String?
 }
 
 struct User: Identifiable {
@@ -45,7 +49,9 @@ class TaskViewModel: ObservableObject {
                         let dependencies = dict["dependencies"] as? [Int]
                         let comments = dict["comments"] as? [String]
                         let attachments = dict["attachments"] as? [String]
-                        return Task(id: id, description: description, location: location, estimatedCost: estimatedCost, finalCost: finalCost, status: status, priority: priority, deadline: deadline, dependencies: dependencies, comments: comments, attachments: attachments)
+                        let beforeScan = dict["before_scan"] as? String
+                        let afterScan = dict["after_scan"] as? String
+                        return Task(id: id, description: description, location: location, estimatedCost: estimatedCost, finalCost: finalCost, status: status, priority: priority, deadline: deadline, dependencies: dependencies, comments: comments, attachments: attachments, beforeScan: beforeScan, afterScan: afterScan)
                     }
                 }
             case .failure(let error):
@@ -156,6 +162,30 @@ class TaskViewModel: ObservableObject {
             }
         }
     }
+
+    // Role-based access control
+    func hasPermission(for role: String) -> Bool {
+        guard let currentUser = currentUser else { return false }
+        let roleHierarchy = ["Super Admin": 4, "Office Admin": 3, "Dispatcher": 2, "Employee": 1]
+        return roleHierarchy[currentUser.role] ?? 0 >= roleHierarchy[role] ?? 0
+    }
+
+    // Push notifications
+    func sendPushNotification(title: String, body: String) {
+        let content = UNMutableNotificationContent()
+        content.title = title
+        content.body = body
+        content.sound = UNNotificationSound.default
+
+        let request = UNNotificationRequest(identifier: UUID().uuidString, content: content, trigger: nil)
+        UNUserNotificationCenter.current().add(request, withCompletionHandler: nil)
+    }
+
+    // ARKit room scanning
+    func captureRoomLayout() -> String {
+        // Implement ARKit room scanning and return the captured layout data as a string
+        return "room_layout_data"
+    }
 }
 
 struct ContentView: View {
@@ -207,6 +237,14 @@ struct TaskRow: View {
             }
             if let attachments = task.attachments {
                 Text("Attachments: \(attachments.joined(separator: ", "))")
+                    .font(.subheadline)
+            }
+            if let beforeScan = task.beforeScan {
+                Text("Before Scan: \(beforeScan)")
+                    .font(.subheadline)
+            }
+            if let afterScan = task.afterScan {
+                Text("After Scan: \(afterScan)")
                     .font(.subheadline)
             }
         }
